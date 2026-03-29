@@ -1,5 +1,10 @@
 ﻿#include <iostream>
 #include <thread>
+
+#define TLPROFILER_IMPLEMENTATION
+#define TLPROFILER_FILE_BUFFERED
+#define SWRAP_IMPLEMENTATION
+
 #include "profiler/profiler.h"
 
 void Hello_World();
@@ -7,11 +12,12 @@ void Message();
 
 int main()
 {
-	std::thread(&Hello_World).detach();
+	auto t = std::thread(&Hello_World);
 	PROFILE
 	Hello_World();
 	std::cout << "Hello CMake." << std::endl;
-	return 0;
+	t.join();
+	return EXIT_SUCCESS;
 }
 
 void Hello_World()
