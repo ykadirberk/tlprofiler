@@ -214,6 +214,9 @@ void __my_profiler_class::profiler_udp_init()
 	dest.sin_family = AF_INET;
 	dest.sin_port = htons(5152);
 	dest.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+	u_long mode = 1; // 0 for blocking, non-zero for non-blocking
+	ioctlsocket((SOCKET)sock, FIONBIO, &mode);
 }
 
 void __my_profiler_class::profiler_udp_destroy()
