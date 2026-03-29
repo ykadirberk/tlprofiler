@@ -3,8 +3,6 @@
 
 #define TLPROFILER_IMPLEMENTATION
 #define TLPROFILER_FILE_BUFFERED
-#define SWRAP_IMPLEMENTATION
-
 #include "profiler/profiler.h"
 
 void Hello_World();

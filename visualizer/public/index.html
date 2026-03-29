@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profiler Visualizer</title>
+<style>
+/* ── Reset & theme ─────────────────────────────────────────────────────────── */
+:root {
+  --bg:     #0d1117;
+  --bg2:    #161b22;
+  --bg3:    #21262d;
+  --border: #30363d;
+  --text:   #c9d1d9;
+  --muted:  #8b949e;
+  --accent: #58a6ff;
+  --green:  #3fb950;
+  --red:    #f85149;
+  --yellow: #d29922;
+
+  --ruler-h:     32px;
+  --row-h:       22px;
+  --thread-hdr:  26px;
+  --thread-gap:  14px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Consolas', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  height: 42px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  user-select: none;
+}
+.app-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+.ws-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  transition: background .4s;
+  flex-shrink: 0;
+}
+.ws-dot.connected { background: var(--green); }
+.ws-dot.live { animation: blink .3s ease-in-out; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.stat { color: var(--muted); font-size: 12px; }
+.stat b { color: var(--text); font-weight: 600; }
+.sep { color: var(--border); }
+
+#controls { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+button {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: background .15s, border-color .15s;
+  white-space: nowrap;
+}
+button:hover   { background: #2d333b; border-color: #484f58; }
+button.active  { background: #1f6feb; border-color: #388bfd; color: #fff; }
+button.danger:hover { background: #3a1c1f; border-color: var(--red); color: var(--red); }
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+#main { display: flex; flex: 1; min-height: 0; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+#sidebar {
+  width: 210px;
+  min-width: 210px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#sidebar-hdr {
+  padding: 8px 10px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .9px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#sidebar-hdr button { padding: 2px 7px; font-size: 11px; }
+#thread-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 3px 0;
+}
+#thread-list::-webkit-scrollbar { width: 5px; }
+#thread-list::-webkit-scrollbar-track { background: transparent; }
+#thread-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.t-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background .1s;
+  user-select: none;
+}
+.t-item:hover       { background: #1c2128; }
+.t-item.selected    { background: #1c2d3f; }
+.t-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.t-id   { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-cnt  { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+
+/* ── Canvas wrapper ─────────────────────────────────────────────────────────── */
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+#canvas { display: block; }
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────────*/
+#tip {
+  position: fixed;
+  pointer-events: none;
+  background: rgba(13,17,23,.97);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  z-index: 1000;
+  display: none;
+  max-width: 380px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.55);
+}
+#tip .t-func { font-size: 13px; font-weight: 700; color: var(--accent); }
+#tip .t-path { color: var(--muted); font-size: 11px; margin-bottom: 5px; word-break: break-all; }
+#tip table   { border-collapse: collapse; }
+#tip td      { padding: 1px 10px 1px 0; }
+#tip td:first-child { color: var(--muted); }
+#tip td:last-child  { color: var(--text); font-weight: 600; }
+
+/* ── Status bar ──────────────────────────────────────────────────────────────*/
+#statusbar {
+  height: 22px;
+  background: #0a0c10;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+  user-select: none;
+}
+#statusbar kbd {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+  font: inherit;
+  font-size: 10px;
+}
+#sb-right { margin-left: auto; display: flex; gap: 14px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div id="header">
+  <div class="ws-dot" id="wsdot"></div>
+  <div class="app-title">PROFILER VISUALIZER</div>
+  <span class="sep">|</span>
+  <div class="stat">Packets: <b id="s-pkts">0</b></div>
+  <div class="stat">Threads: <b id="s-threads">0</b></div>
+  <div class="stat">FPS: <b id="s-fps">—</b></div>
+  <div id="controls">
+    <button id="btn-fit"    title="Fit all visible data (F)">Fit All</button>
+    <button id="btn-auto"   class="active" title="Follow latest data (Space)">Auto-scroll</button>
+    <button id="btn-clear"  class="danger" title="Clear all data">Clear</button>
+  </div>
+</div>
+
+<!-- ── Main ───────────────────────────────────────────────────────────────── -->
+<div id="main">
+  <div id="sidebar">
+    <div id="sidebar-hdr">
+      <span>Threads</span>
+      <button id="btn-all">Toggle All</button>
+    </div>
+    <div id="thread-list"></div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+
+<!-- ── Tooltip ────────────────────────────────────────────────────────────── -->
+<div id="tip"></div>
+
+<!-- ── Status bar ─────────────────────────────────────────────────────────── -->
+<div id="statusbar">
+  <span><kbd>Wheel</kbd> zoom</span>
+  <span><kbd>Shift+Wheel</kbd> scroll</span>
+  <span><kbd>Drag</kbd> pan</span>
+  <span><kbd>F</kbd> fit</span>
+  <span><kbd>Space</kbd> auto-scroll</span>
+  <span><kbd>Dbl-click</kbd> fit all</span>
+  <div id="sb-right">
+    <span id="sb-range"></span>
+    <span id="sb-cursor"></span>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// Constants
+// ════════════════════════════════════════════════════════════════════════════
+const RULER_H    = 32;  // px — horizontal time ruler
+const ROW_H      = 22;  // px — height of each call-depth row
+const THREAD_HDR = 26;  // px — thread label bar height
+const THREAD_GAP = 14;  // px — gap between threads
+
+// Fixed colour palette for thread swatches; function colours are hashed.
+const THREAD_PALETTE = [
+  '#58a6ff','#3fb950','#d29922','#f85149','#bc8cff',
+  '#79c0ff','#56d364','#ffa657','#ff7b72','#a5d6ff',
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// Utilities
+// ════════════════════════════════════════════════════════════════════════════
+function hashStr(s) {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
+function funcColor(name) {
+  const h = hashStr(name) % 360;
+  return `hsl(${h},58%,38%)`;
+}
+
+function fmtTime(us) {
+  if (us >= 1e9) return (us / 1e9).toFixed(3) + ' s';
+  if (us >= 1e6) return (us / 1e6).toFixed(3) + ' s';
+  if (us >= 1e3) return (us / 1e3).toFixed(2) + ' ms';
+  return us.toFixed(1) + ' µs';
+}
+
+function niceStep(raw) {
+  if (raw <= 0) return 1;
+  const exp  = Math.floor(Math.log10(raw));
+  const base = Math.pow(10, exp);
+  const f    = raw / base;
+  const nice = f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10;
+  return nice * base;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Binary search helpers
+function lowerBound(arr, val, key) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo+hi)>>1; if (key(arr[m]) < val) lo=m+1; else hi=m; }
+  return lo;
+}
+function upperBound(arr, val, key) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo+hi)>>1; if (key(arr[m]) <= val) lo=m+1; else hi=m; }
+  return lo;
+}
+
+// Merge two sorted span arrays (sorted by .start)
+function mergeSorted(a, b) {
+  const out = new Array(a.length + b.length);
+  let i=0, j=0, k=0;
+  while (i<a.length && j<b.length)
+    out[k++] = a[i].start <= b[j].start ? a[i++] : b[j++];
+  while (i<a.length) out[k++]=a[i++];
+  while (j<b.length) out[k++]=b[j++];
+  return out;
+}
+
+// Merge consecutive same-function spans into one block when at least one is non-leaf.
+// Two leaf spans of the same function are kept separate (distinct measured calls).
+// A leaf + non-leaf (or non-leaf + non-leaf) pair merges into a non-leaf block.
+function coalesceParents(arr) {
+  if (!arr || arr.length <= 1) return arr;
+  const out = [];
+  let cur = { ...arr[0] };
+  for (let i = 1; i < arr.length; i++) {
+    const sp = arr[i];
+    if (sp.func === cur.func && (!cur.leaf || !sp.leaf)) {
+      if (sp.start < cur.start) cur.start = sp.start;
+      if (sp.end   > cur.end)   cur.end   = sp.end;
+      cur.leaf = false;   // merged block: use end-start in tooltip
+    } else {
+      out.push(cur);
+      cur = { ...sp };
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+// Returns visible spans in arr[start..end) that overlap [vs,ve]
+// Assumes spans at a given depth don't overlap → sorted by start ≡ sorted by end
+function visibleSpans(arr, vs, ve) {
+  if (!arr || arr.length === 0) return arr || [];
+  const s = lowerBound(arr, vs, sp => sp.end);   // first where end >= vs
+  const e = upperBound(arr, ve, sp => sp.start);  // last where start <= ve
+  if (s >= e) return [];
+  return arr.slice(s, e);   // slice is fine; k is small for any reasonable zoom level
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ThreadData
+// ════════════════════════════════════════════════════════════════════════════
+let _colorIdx = 0;
+
+class ThreadData {
+  constructor(id) {
+    this.id       = id;
+    this.color    = THREAD_PALETTE[_colorIdx++ % THREAD_PALETTE.length];
+    this.byDepth  = [];   // sparse array: byDepth[d] = Span[] sorted by start
+    this._pend    = [];   // pending spans waiting to be flushed
+    this.maxDepth = -1;
+    this.minTime  = Infinity;
+    this.maxTime  = -Infinity;
+    this.spanCount = 0;
+  }
+
+  addRaw(pkt) {
+    const parts = pkt.call_stack.split('->').map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) return;
+
+    const leafDepth = parts.length - 1;
+
+    // One span per call-stack level. Parent spans are later coalesced in flush().
+    for (let d = 0; d < parts.length; d++) {
+      this._pend.push({
+        depth  : d,
+        func   : parts[d],
+        path   : parts.slice(0, d + 1).join(' → '),
+        start  : pkt.start,
+        end    : pkt.end,
+        elapsed: pkt.elapsed,   // meaningful for leaf; parent shows end-start in tooltip
+        color  : funcColor(parts[d]),
+        leaf   : d === leafDepth,
+      });
+    }
+
+    if (leafDepth   > this.maxDepth) this.maxDepth = leafDepth;
+    if (pkt.start < this.minTime)    this.minTime  = pkt.start;
+    if (pkt.end   > this.maxTime)    this.maxTime  = pkt.end;
+    this.spanCount++;
+  }
+
+  flush() {
+    if (this._pend.length === 0) return;
+
+    const byD = {};
+    for (const sp of this._pend) {
+      if (!byD[sp.depth]) byD[sp.depth] = [];
+      byD[sp.depth].push(sp);
+    }
+    this._pend = [];
+
+    for (const [d, arr] of Object.entries(byD)) {
+      const di = +d;
+      arr.sort((a, b) => a.start - b.start);
+      const merged = this.byDepth[di] ? mergeSorted(this.byDepth[di], arr) : arr;
+      // Merge consecutive same-function parent spans into one continuous block.
+      // Leaf spans stay as individual entries (they carry measured timing).
+      this.byDepth[di] = coalesceParents(merged);
+    }
+  }
+
+  clear() {
+    this.byDepth   = [];
+    this._pend     = [];
+    this.maxDepth  = -1;
+    this.minTime   = Infinity;
+    this.maxTime   = -Infinity;
+    this.spanCount = 0;
+  }
+
+  // Total pixel height this thread occupies in the canvas
+  get pixelHeight() {
+    return THREAD_HDR + (this.maxDepth + 1) * ROW_H + THREAD_GAP;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// App state
+// ════════════════════════════════════════════════════════════════════════════
+const threads         = new Map();    // id → ThreadData
+const selectedThreads = new Set();   // ids currently shown
+let globalMinTime     = Infinity;
+let globalMaxTime     = -Infinity;
+let totalPackets      = 0;
+
+let viewStart        = 0;
+let viewEnd          = 0;          // initialised on first packet
+let viewInitialized  = false;
+let scrollY          = 0;
+let dirty            = true;
+let autoScroll       = true;
+
+// ════════════════════════════════════════════════════════════════════════════
+// Canvas setup
+// ════════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('canvas-wrap');
+let dpr      = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  const r   = wrap.getBoundingClientRect();
+  dpr       = window.devicePixelRatio || 1;
+  canvas.width         = r.width  * dpr;
+  canvas.height        = r.height * dpr;
+  canvas.style.width   = r.width  + 'px';
+  canvas.style.height  = r.height + 'px';
+  dirty = true;
+}
+
+const ro = new ResizeObserver(resizeCanvas);
+ro.observe(wrap);
+resizeCanvas();
+
+function W() { return canvas.width  / dpr; }
+function H() { return canvas.height / dpr; }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Coordinate transforms
+// ════════════════════════════════════════════════════════════════════════════
+function timeToX(t)  { return (t - viewStart) / (viewEnd - viewStart) * W(); }
+function xToTime(x)  { return viewStart + x / W() * (viewEnd - viewStart); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Render
+// ════════════════════════════════════════════════════════════════════════════
+let _frameCount = 0, _fpsClock = 0, _fpsDisplay = 0;
+
+function render() {
+  requestAnimationFrame(render);
+
+  // FPS counter (tracks actual draw calls per second)
+  const now = performance.now();
+  if (now - _fpsClock >= 1000) {
+    _fpsDisplay = Math.round(_frameCount * 1000 / (now - _fpsClock));
+    _frameCount = 0;
+    _fpsClock   = now;
+    document.getElementById('s-fps').textContent = _fpsDisplay;
+  }
+
+  if (!dirty) return;
+  dirty = false;
+  _frameCount++;
+
+  const w = W(), h = H();
+
+  ctx.save();
+  ctx.scale(dpr, dpr);
+
+  // ── Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, w, h);
+
+  // ── Clip below ruler
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, RULER_H, w, h - RULER_H);
+  ctx.clip();
+
+  // ── Threads
+  let y = RULER_H - scrollY;
+  const visible = [...selectedThreads].filter(id => threads.has(id));
+
+  for (const tid of visible) {
+    const th = threads.get(tid);
+    th.flush();
+    if (th.maxDepth < 0) continue;
+
+    const thH = th.pixelHeight;
+
+    // Skip if completely above/below viewport
+    if (y + thH < RULER_H || y > h) { y += thH; continue; }
+
+    // ── Thread header bar
+    ctx.fillStyle = '#1c2128';
+    ctx.fillRect(0, y, w, THREAD_HDR);
+    ctx.fillStyle = th.color;
+    ctx.fillRect(0, y, 3, THREAD_HDR);
+
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = 'bold 12px Consolas,monospace';
+    ctx.fillText(`Thread ${tid}`, 10, y + 17);
+
+    ctx.fillStyle = '#6e7681';
+    ctx.font = '11px Consolas,monospace';
+    const cntLabel = `${th.spanCount.toLocaleString()} spans`;
+    ctx.fillText(cntLabel, w - ctx.measureText(cntLabel).width - 8, y + 17);
+
+    const rowBase = y + THREAD_HDR;
+
+    // ── Alternating row backgrounds
+    for (let d = 0; d <= th.maxDepth; d++) {
+      const ry = rowBase + d * ROW_H;
+      if (ry + ROW_H < RULER_H || ry > h) continue;
+      ctx.fillStyle = d % 2 === 0 ? '#0d1117' : '#0f1218';
+      ctx.fillRect(0, ry, w, ROW_H);
+    }
+
+    // ── Spans
+    ctx.font = '11px Consolas,monospace';
+    for (let d = 0; d <= th.maxDepth; d++) {
+      const arr = th.byDepth[d];
+      if (!arr) continue;
+      const ry = rowBase + d * ROW_H;
+      if (ry + ROW_H < RULER_H || ry > h) continue;
+
+      const vis = visibleSpans(arr, viewStart, viewEnd);
+      for (const sp of vis) {
+        const x1 = timeToX(sp.start);
+        const x2 = timeToX(sp.end);
+        const sw = x2 - x1;
+
+        if (sw < 1) {
+          // Sub-pixel: draw as 1-px tick
+          ctx.fillStyle = sp.color;
+          ctx.fillRect(Math.floor(x1), ry + 3, 1, ROW_H - 6);
+          continue;
+        }
+
+        // Body
+        ctx.fillStyle = sp.color;
+        ctx.fillRect(x1, ry + 1, sw, ROW_H - 2);
+
+        // Highlight top edge
+        ctx.fillStyle = 'rgba(255,255,255,.18)';
+        ctx.fillRect(x1, ry + 1, sw, 2);
+
+        // Right border / shadow
+        ctx.fillStyle = 'rgba(0,0,0,.35)';
+        ctx.fillRect(x2 - 1, ry + 1, 1, ROW_H - 2);
+
+        // Label
+        if (sw > 22) {
+          ctx.fillStyle = 'rgba(255,255,255,.88)';
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x1 + 3, ry, sw - 6, ROW_H);
+          ctx.clip();
+          ctx.fillText(sp.func, x1 + 4, ry + ROW_H - 6);
+          ctx.restore();
+        }
+      }
+    }
+
+    // ── Thread separator line
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(0,   y + thH - THREAD_GAP / 2 + 0.5);
+    ctx.lineTo(w,   y + thH - THREAD_GAP / 2 + 0.5);
+    ctx.stroke();
+
+    y += thH;
+  }
+
+  // ── Empty state message
+  if (visible.length === 0) {
+    ctx.fillStyle = '#484f58';
+    ctx.font      = '14px Consolas,monospace';
+    ctx.textAlign = 'center';
+    if (threads.size === 0) {
+      ctx.fillText('Waiting for UDP packets on port 5152…', w / 2, h / 2);
+      ctx.font = '12px Consolas,monospace';
+      ctx.fillStyle = '#30363d';
+      ctx.fillText('Send profiler_payload_t structs to UDP port 5152', w / 2, h / 2 + 24);
+    } else {
+      ctx.fillText('Select a thread from the left panel to visualize it.', w / 2, h / 2);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  ctx.restore(); // end clip-below-ruler
+
+  // ── Ruler (drawn on top so it's always visible)
+  drawRuler(w);
+
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Time ruler
+// ════════════════════════════════════════════════════════════════════════════
+function drawRuler(w) {
+  // Background
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, w, RULER_H);
+
+  // Bottom border
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(0,   RULER_H - 0.5);
+  ctx.lineTo(w,   RULER_H - 0.5);
+  ctx.stroke();
+
+  const range = viewEnd - viewStart;
+  if (range <= 0) return;
+
+  const targetTicks = Math.max(4, Math.floor(w / 90));
+  const step  = niceStep(range / targetTicks);
+  const first = Math.ceil(viewStart / step) * step;
+
+  ctx.fillStyle   = '#8b949e';
+  ctx.strokeStyle = '#21262d';
+  ctx.lineWidth   = 1;
+  ctx.font        = '10px Consolas,monospace';
+
+  for (let t = first; t <= viewEnd + step; t += step) {
+    const x = Math.round(timeToX(t)) + 0.5;
+    if (x < 0 || x > w + 50) continue;
+
+    // Tick
+    ctx.beginPath();
+    ctx.moveTo(x, RULER_H - 7);
+    ctx.lineTo(x, RULER_H);
+    ctx.strokeStyle = '#30363d';
+    ctx.stroke();
+
+    // Label
+    const label = fmtTime(t - globalMinTime);
+    const lw    = ctx.measureText(label).width;
+    if (x + lw + 4 <= w) ctx.fillText(label, x + 3, RULER_H - 9);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Mouse / touch interaction
+// ════════════════════════════════════════════════════════════════════════════
+let isDragging  = false;
+let dragLastX   = 0;
+let hoveredSpan = null;
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  isDragging = true;
+  dragLastX  = e.offsetX;
+  autoScroll = false;
+  updateAutoBtn();
+  canvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mouseup', () => {
+  isDragging = false;
+  canvas.style.cursor = 'crosshair';
+});
+
+window.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const my   = e.clientY - rect.top;
+
+  if (isDragging) {
+    const dx = mx - dragLastX;
+    dragLastX = mx;
+    const dt  = -dx / W() * (viewEnd - viewStart);
+    viewStart += dt;
+    viewEnd   += dt;
+    dirty = true;
+    updateSBRange();
+    return;
+  }
+
+  // Update cursor position in status bar
+  if (mx >= 0 && my >= RULER_H) {
+    const mn = globalMinTime === Infinity ? 0 : globalMinTime;
+    document.getElementById('sb-cursor').textContent =
+      't = ' + fmtTime(xToTime(mx) - mn);
+  }
+
+  doHover(mx, my, e.clientX, e.clientY);
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hideTooltip();
+  hoveredSpan = null;
+  document.getElementById('sb-cursor').textContent = '';
+});
+
+canvas.addEventListener('dblclick', fitAll);
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+
+  if (e.shiftKey) {
+    // Vertical scroll
+    const maxScroll = Math.max(0, totalThreadsHeight() - (H() - RULER_H));
+    scrollY = Math.max(0, Math.min(scrollY + e.deltaY * 0.6, maxScroll));
+    dirty = true;
+    return;
+  }
+
+  // Horizontal zoom centred on mouse
+  autoScroll = false;
+  updateAutoBtn();
+
+  const t      = xToTime(e.offsetX);
+  const factor = e.deltaY > 0 ? 1.22 : (1 / 1.22);
+  const range  = viewEnd - viewStart;
+  const newR   = Math.max(10, range * factor);
+  const ratio  = (t - viewStart) / range;
+  viewStart    = t - ratio * newR;
+  viewEnd      = viewStart + newR;
+  dirty = true;
+  updateSBRange();
+}, { passive: false });
+
+canvas.style.cursor = 'crosshair';
+
+// ════════════════════════════════════════════════════════════════════════════
+// Hover / hit-test / tooltip
+// ════════════════════════════════════════════════════════════════════════════
+const tip = document.getElementById('tip');
+
+function doHover(mx, my, cx, cy) {
+  const sp = hitTest(mx, my);
+  if (sp) {
+    canvas.style.cursor = 'default';
+    if (sp !== hoveredSpan) {
+      hoveredSpan = sp;
+      showTooltip(cx, cy, sp);
+    } else {
+      moveTooltip(cx, cy);
+    }
+  } else {
+    if (hoveredSpan) { hoveredSpan = null; hideTooltip(); }
+    canvas.style.cursor = isDragging ? 'grabbing' : 'crosshair';
+  }
+}
+
+function hitTest(mx, my) {
+  if (my < RULER_H) return null;
+  let y = RULER_H - scrollY;
+
+  for (const tid of selectedThreads) {
+    const th = threads.get(tid);
+    if (!th || th.maxDepth < 0) continue;
+
+    const rowBase = y + THREAD_HDR;
+    const thBottom = y + th.pixelHeight;
+
+    if (my >= rowBase && my < thBottom - THREAD_GAP) {
+      const d   = Math.floor((my - rowBase) / ROW_H);
+      if (d > th.maxDepth) { y += th.pixelHeight; continue; }
+      const arr = th.byDepth[d];
+      if (arr) {
+        const t  = xToTime(mx);
+        const sp = spanAt(arr, t);
+        if (sp) return sp;
+      }
+    }
+    y += th.pixelHeight;
+  }
+  return null;
+}
+
+function spanAt(arr, t) {
+  // Find rightmost span starting at or before t
+  const i = upperBound(arr, t, sp => sp.start) - 1;
+  if (i >= 0 && arr[i].end >= t) return arr[i];
+  return null;
+}
+
+function showTooltip(cx, cy, sp) {
+  tip.innerHTML = `
+    <div class="t-func">${esc(sp.func)}</div>
+    <div class="t-path">${esc(sp.path)}</div>
+    <table>
+      <tr><td>Start</td>  <td>${fmtTime(sp.start   - globalMinTime)}</td></tr>
+      <tr><td>End</td>    <td>${fmtTime(sp.end     - globalMinTime)}</td></tr>
+      <tr><td>Elapsed</td><td>${fmtTime(sp.leaf ? sp.elapsed : sp.end - sp.start)}</td></tr>
+      <tr><td>Depth</td>  <td>${sp.depth}</td></tr>
+    </table>`;
+  tip.style.display = 'block';
+  moveTooltip(cx, cy);
+}
+
+function moveTooltip(cx, cy) {
+  const tw = tip.offsetWidth, th2 = tip.offsetHeight;
+  let tx = cx + 14, ty = cy - 8;
+  if (tx + tw > window.innerWidth  - 6) tx = cx - tw - 14;
+  if (ty + th2 > window.innerHeight - 6) ty = cy - th2 - 8;
+  tip.style.left = tx + 'px';
+  tip.style.top  = ty + 'px';
+}
+
+function hideTooltip() { tip.style.display = 'none'; }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Controls
+// ════════════════════════════════════════════════════════════════════════════
+function totalThreadsHeight() {
+  let h = 0;
+  for (const tid of selectedThreads) {
+    const th = threads.get(tid);
+    if (th && th.maxDepth >= 0) h += th.pixelHeight;
+  }
+  return h;
+}
+
+function fitAll() {
+  autoScroll = false;
+  updateAutoBtn();
+  let mn = Infinity, mx = -Infinity;
+  for (const tid of selectedThreads) {
+    const th = threads.get(tid);
+    if (!th || th.maxDepth < 0) continue;
+    if (th.minTime < mn) mn = th.minTime;
+    if (th.maxTime > mx) mx = th.maxTime;
+  }
+  if (mn === Infinity) return;
+  const pad = Math.max((mx - mn) * 0.02, 1000);
+  viewStart = mn - pad;
+  viewEnd   = mx + pad;
+  scrollY   = 0;
+  dirty = true;
+  updateSBRange();
+}
+
+function updateAutoBtn() {
+  document.getElementById('btn-auto').classList.toggle('active', autoScroll);
+}
+
+function updateSBRange() {
+  const r   = viewEnd - viewStart;
+  const mn  = globalMinTime === Infinity ? 0 : globalMinTime;
+  document.getElementById('sb-range').textContent =
+    `${fmtTime(viewStart - mn)} → ${fmtTime(viewEnd - mn)}  |  range ${fmtTime(r)}`;
+}
+updateSBRange();
+
+document.getElementById('btn-fit').addEventListener('click', fitAll);
+document.getElementById('btn-auto').addEventListener('click', () => {
+  autoScroll = !autoScroll; updateAutoBtn();
+});
+document.getElementById('btn-clear').addEventListener('click', () => {
+  for (const th of threads.values()) th.clear();
+  globalMinTime = Infinity; globalMaxTime = -Infinity;
+  totalPackets  = 0;
+  document.getElementById('s-pkts').textContent = '0';
+  scrollY = 0;
+  dirty   = true;
+  updateSBRange();
+});
+document.getElementById('btn-all').addEventListener('click', () => {
+  const allOn = [...threads.keys()].every(id => selectedThreads.has(id));
+  if (allOn) selectedThreads.clear();
+  else       for (const id of threads.keys()) selectedThreads.add(id);
+  rebuildThreadList();
+  dirty = true;
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Keyboard shortcuts
+// ════════════════════════════════════════════════════════════════════════════
+window.addEventListener('keydown', e => {
+  if (e.target !== document.body && e.target.tagName !== 'CANVAS') return;
+  switch (e.key) {
+    case 'f': case 'F': fitAll(); break;
+    case ' ':
+      e.preventDefault();
+      autoScroll = !autoScroll; updateAutoBtn(); break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      { const d = (viewEnd-viewStart)*.1; viewStart-=d; viewEnd-=d; dirty=true; updateSBRange(); } break;
+    case 'ArrowRight':
+      e.preventDefault();
+      { const d = (viewEnd-viewStart)*.1; viewStart+=d; viewEnd+=d; dirty=true; updateSBRange(); } break;
+    case '+': case '=':
+      { const c=(viewStart+viewEnd)/2, r=(viewEnd-viewStart)*.4; viewStart=c-r; viewEnd=c+r; dirty=true; updateSBRange(); } break;
+    case '-':
+      { const c=(viewStart+viewEnd)/2, r=(viewEnd-viewStart)*.7; viewStart=c-r; viewEnd=c+r; dirty=true; updateSBRange(); } break;
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Thread list UI
+// ════════════════════════════════════════════════════════════════════════════
+function rebuildThreadList() {
+  const list   = document.getElementById('thread-list');
+  list.innerHTML = '';
+  const sorted = [...threads.entries()].sort((a,b) => +a[0] - +b[0]);
+
+  for (const [id, th] of sorted) {
+    const item = document.createElement('div');
+    item.className = 't-item' + (selectedThreads.has(id) ? ' selected' : '');
+    item.dataset.id = id;
+    item.innerHTML  = `
+      <div class="t-swatch" style="background:${th.color}"></div>
+      <div class="t-id">${id}</div>
+      <div class="t-cnt">${th.spanCount.toLocaleString()}</div>`;
+    item.addEventListener('click', () => {
+      if (selectedThreads.has(id)) { selectedThreads.delete(id); item.classList.remove('selected'); }
+      else                         { selectedThreads.add(id);    item.classList.add('selected'); }
+      dirty = true;
+    });
+    list.appendChild(item);
+  }
+  document.getElementById('s-threads').textContent = threads.size;
+}
+
+// Lightweight count-only update (no full rebuild)
+function updateThreadCounts() {
+  for (const item of document.querySelectorAll('.t-item')) {
+    const th = threads.get(item.dataset.id);
+    if (th) item.querySelector('.t-cnt').textContent = th.spanCount.toLocaleString();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WebSocket
+// ════════════════════════════════════════════════════════════════════════════
+let _wsDelay = 1000;
+
+function connect() {
+  const ws  = new WebSocket(`ws://${location.host}`);
+  const dot = document.getElementById('wsdot');
+
+  ws.onopen = () => {
+    dot.className = 'ws-dot connected';
+    _wsDelay = 1000;
+  };
+  ws.onclose = ws.onerror = () => {
+    dot.className = 'ws-dot';
+    setTimeout(connect, _wsDelay);
+    _wsDelay = Math.min(_wsDelay * 2, 10000);
+  };
+
+  ws.onmessage = ({ data }) => {
+    const msg = JSON.parse(data);
+    if (msg.type !== 'batch') return;
+
+    let newThread = false;
+
+    for (const pkt of msg.packets) {
+      let th = threads.get(pkt.thread_id);
+      if (!th) {
+        th = new ThreadData(pkt.thread_id);
+        threads.set(pkt.thread_id, th);
+        selectedThreads.add(pkt.thread_id);
+        newThread = true;
+      }
+      th.addRaw(pkt);
+
+      if (pkt.start < globalMinTime) globalMinTime = pkt.start;
+      if (pkt.end   > globalMaxTime) globalMaxTime = pkt.end;
+      if (!viewInitialized) {
+        viewStart       = globalMinTime;
+        viewEnd         = globalMinTime + 5_000_000;
+        viewInitialized = true;
+      }
+      totalPackets++;
+    }
+
+    document.getElementById('s-pkts').textContent = totalPackets.toLocaleString();
+
+    if (newThread) rebuildThreadList();
+    else           updateThreadCounts();
+
+    // Auto-scroll: keep viewEnd at the leading edge
+    if (autoScroll && globalMaxTime > -Infinity) {
+      const range  = viewEnd - viewStart;
+      viewEnd      = globalMaxTime + range * 0.04;
+      viewStart    = viewEnd - range;
+      updateSBRange();
+    }
+
+    dirty = true;
+
+    // Pulse dot
+    dot.classList.remove('live');
+    void dot.offsetWidth;
+    dot.classList.add('live');
+  };
+}
+
+connect();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

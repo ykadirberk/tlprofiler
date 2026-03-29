@@ -1,4 +1,4 @@
-// TLPROFILER_IMPLEMENTATION and SWRAP_IMPLEMENTATION should be defined in a cpp file before using anywhere else.
+// TLPROFILER_IMPLEMENTATION should be defined in a cpp file before using anywhere else.
 // 
 // Macros below are either defined with every inclusion or defined as a compiler option.
 // ----------------
@@ -30,7 +30,9 @@
 #include <chrono>
 
 #if defined(TLPROFILER_UDP_DIRECT)
-#include "ext/swrap.h"
+
+#include <winsock2.h>
+#pragma comment(lib, "ws2_32.lib")
 
 typedef struct _profiler_payload_t
 {
@@ -72,7 +74,8 @@ class __my_profiler_class
 #endif
 
 #if defined(TLPROFILER_UDP_DIRECT)
-		static inline int sock;
+		static inline void* sock;
+		static inline sockaddr_in dest;
 #endif
 
 		std::chrono::time_point<std::chrono::system_clock> start_time;
@@ -147,16 +150,17 @@ __my_profiler_class::~__my_profiler_class()
 #endif
 
 #if defined(TLPROFILER_UDP_DIRECT)
-	
 	profiler_payload_t payload;
 	payload.thread_id             = get_cached_id_int();
-	payload.start_time_microsec   = get_cached_id_int();
-	payload.end_time_microsec     = get_cached_id_int();
-	payload.elapsed_time_microsec = get_cached_id_int();
-	payload.call_stack_size       = get_cached_id_int();
-	memcpy(payload.call_stack, call_stack.data(), call_stack.size() < 1024 ? call_stack.size() : 1024 );
-	swrapSend(sock, static_cast<const char*>(static_cast<void*>(&payload)), sizeof(payload));
+	payload.start_time_microsec   = std::chrono::duration_cast<std::chrono::microseconds>(start_time.time_since_epoch()).count();
+	payload.end_time_microsec     = std::chrono::duration_cast<std::chrono::microseconds>(end_time.time_since_epoch()).count();
+	payload.elapsed_time_microsec = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+	payload.call_stack_size       = call_stack.size() < 1024 ? call_stack.size() : 1024;
+	
+	memcpy(payload.call_stack, call_stack.data(), payload.call_stack_size);
 
+	sendto((SOCKET)sock, reinterpret_cast<const char*>(&payload), sizeof(payload),
+	   0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 #endif
 
 	call_stack = remove_last_call(call_stack);
@@ -204,14 +208,17 @@ std::string_view __my_profiler_class::remove_last_call(std::string_view t)
 
 void __my_profiler_class::profiler_udp_init()
 {
-	swrapInit();
-	sock = swrapSocket(SWRAP_UDP, SWRAP_BIND, SWRAP_NOBLOCK, "127.0.0.1", "5152");
+	WSADATA wsa;
+	WSAStartup(MAKEWORD(2, 2), &wsa);
+	sock = (void*)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	dest.sin_family = AF_INET;
+	dest.sin_port = htons(5152);
+	dest.sin_addr.s_addr = inet_addr("127.0.0.1");
 }
 
 void __my_profiler_class::profiler_udp_destroy()
 {
-	swrapClose(sock);
-	swrapTerminate();
+
 }
 
 #endif

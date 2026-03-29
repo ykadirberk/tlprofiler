@@ -6,7 +6,6 @@ Thread Local profiler with output to file for C++. Example code is in tlprofiler
 Simply create a cpp file and write this at the top of the file. Then you can start including profiler.h where it should be used.
 ```
 #define TLPROFILER_IMPLEMENTATION
-#define SWRAP_IMPLEMENTATION
 #include "profiler/profiler.h"
 ```
 Output format must be explicitly defined by defining these macros:
@@ -51,7 +50,6 @@ As a note, using TLPROFILER_UDP_DIRECT requires some other macros to be executed
 ```
 #define TLPROFILER_IMPLEMENTATION
 #define TLPROFILER_UDP_DIRECT
-#define SWRAP_IMPLEMENTATION
 #include "profiler/profiler.h"
 
 int main() 
@@ -90,15 +88,18 @@ int main()
  -> Hello_World ::: 1774749448816322 - 1774749448819318 ::: 2996 microseconds 
 ```
 
-### The injector script
-Usage is
+### Injector script
+This script injects the macro to all C++ functions within the given folder and includes the provided header file. Header is just a string so it should be the path your compiler will allow. Usage is:
 ```
 inject_macro.py --folder FOLDER --macro MACRO --header HEADER [--dry-run] [--no-recurse]
 ```
-
-This script injects the macro to all C++ functions within the given folder and includes the provided header file. Header is just a string so it should be the path your compiler will allow.
-
+Example shell prompt
 ```
 py .\inject_macro.py --folder ./tlprofiler/ --macro PROFILE --header profiler/profiler.h
 ```
-
+### Visualizer
+Simply run below code on shell, go to http://localhost:3000/ and then run your profiler injected code. 
+```
+cd visualizer
+npm start
+```
