@@ -97,7 +97,7 @@ Example shell prompt
 ```
 py .\inject_macro.py --folder ./tlprofiler/ --macro PROFILE --header profiler/profiler.h
 ```
-### Visualizer
+### Visualizer (for TLPROFILER_UDP_DIRECT)
 Simply run below code on shell, go to http://localhost:3000/ and then run your profiler injected code. 
 ```
 cd visualizer
