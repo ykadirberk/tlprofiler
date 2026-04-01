@@ -8,7 +8,7 @@
 // TLPROFILER_FILE_DIRECT macro allows the output of profiler to be written to a file at the function exit.
 // Detached threads might not output some of function's output if the main thread exits first.
 // ----------------
-// TLPROFILER_UDP_DIRECT macro allows the output of profiler to be sent over udp connection (localhost:5152) in real time.
+// TLPROFILER_UDP_DIRECT (only on Windows) macro allows the output of profiler to be sent over udp connection (localhost:5152) in real time.
 // PROFILER_UDP_INIT should be run for a single time before any profiling occurs
 // PROFILER_UDP_DESTROY should be run after all profiling occurs.
 // payload of the udp packet's layout:
@@ -74,7 +74,7 @@ class __my_profiler_class
 #endif
 
 #if defined(TLPROFILER_UDP_DIRECT)
-		static inline void* sock;
+		static inline void* sock = nullptr;
 		static inline sockaddr_in dest;
 #endif
 
@@ -211,15 +211,18 @@ std::string_view __my_profiler_class::remove_last_call(std::string_view t)
 
 void __my_profiler_class::profiler_udp_init()
 {
-	WSADATA wsa;
-	WSAStartup(MAKEWORD(2, 2), &wsa);
-	sock = (void*)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	dest.sin_family = AF_INET;
-	dest.sin_port = htons(5152);
-	dest.sin_addr.s_addr = inet_addr("127.0.0.1");
+	if (nullptr == sock)
+	{
+		WSADATA wsa;
+		WSAStartup(MAKEWORD(2, 2), &wsa);
+		sock = (void*)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		dest.sin_family = AF_INET;
+		dest.sin_port = htons(5152);
+		dest.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-	u_long mode = 1; // 0 for blocking, non-zero for non-blocking
-	ioctlsocket((SOCKET)sock, FIONBIO, &mode);
+		u_long mode = 1; // 0 for blocking, non-zero for non-blocking
+		ioctlsocket((SOCKET)sock, FIONBIO, &mode);
+	}
 }
 
 void __my_profiler_class::profiler_udp_destroy()

@@ -18,7 +18,7 @@ Output format must be explicitly defined by defining these macros:
 // TLPROFILER_FILE_DIRECT macro allows the output of profiler to be written to a file at the function exit.
 // Detached threads might not output some of function's output if the main thread exits first.
 // ----------------
-// TLPROFILER_UDP_DIRECT macro allows the output of profiler to be sent over udp connection (localhost:5152) in real time.
+// TLPROFILER_UDP_DIRECT (only on Windows) macro allows the output of profiler to be sent over udp connection (localhost:5152) in real time.
 // PROFILER_UDP_INIT should be run for a single time before any profiling occurs
 // PROFILER_UDP_DESTROY should be run after all profiling occurs.
 // payload of the udp packet's layout:
@@ -44,6 +44,17 @@ void Hello_World()
 	std::cout << "Hello World." << std::endl;
 }
 ```
+using PROFILE_NAME("custom_name") will help naming scopes with custom names.
+```
+void Hello_World()
+{
+	PROFILE
+	PROFILE_NAME("custom")
+	std::cout << "Hello World." << std::endl;
+}
+
+```
+
 
 As a note, using TLPROFILER_UDP_DIRECT requires some other macros to be executed. An example code:
 
@@ -69,23 +80,23 @@ int main()
 
 ### profiler-17620.txt
 ```
- -> main -> Hello_World -> Message ::: 1774749448813808 - 1774749448816386 ::: 2578 microseconds 
- -> main -> Hello_World -> Message ::: 1774749448816491 - 1774749448818160 ::: 1668 microseconds 
- -> main -> Hello_World -> Message ::: 1774749448818209 - 1774749448819996 ::: 1787 microseconds 
- -> main -> Hello_World -> Message ::: 1774749448820015 - 1774749448820519 ::: 503 microseconds 
- -> main -> Hello_World -> Message ::: 1774749448820536 - 1774749448820989 ::: 453 microseconds 
- -> main -> Hello_World ::: 1774749448813706 - 1774749448821003 ::: 7297 microseconds 
- -> main ::: 1774749448813704 - 1774749448821046 ::: 7341 microseconds 
+ -> [14]main -> [23]Hello_World -> [34]Message ::: 1775004546113097 - 1775004546114823 ::: 1726 microseconds 
+ -> [14]main -> [23]Hello_World -> [34]Message ::: 1775004546115750 - 1775004546116300 ::: 550 microseconds 
+ -> [14]main -> [23]Hello_World -> [34]Message ::: 1775004546116314 - 1775004546117797 ::: 1483 microseconds 
+ -> [14]main -> [23]Hello_World -> [34]Message ::: 1775004546117817 - 1775004546119103 ::: 1286 microseconds 
+ -> [14]main -> [23]Hello_World -> [34]Message ::: 1775004546119122 - 1775004546120114 ::: 991 microseconds 
+ -> [14]main -> [23]Hello_World ::: 1775004546112967 - 1775004546120136 ::: 7168 microseconds 
+ -> [14]main ::: 1775004546112964 - 1775004546120652 ::: 7688 microseconds 
 ```
 
 ### profiler-38460.txt
 ```
- -> Hello_World -> Message ::: 1774749448816457 - 1774749448816989 ::: 532 microseconds 
- -> Hello_World -> Message ::: 1774749448817009 - 1774749448817457 ::: 448 microseconds 
- -> Hello_World -> Message ::: 1774749448817476 - 1774749448817839 ::: 362 microseconds 
- -> Hello_World -> Message ::: 1774749448817844 - 1774749448818541 ::: 697 microseconds 
- -> Hello_World -> Message ::: 1774749448818557 - 1774749448819303 ::: 745 microseconds 
- -> Hello_World ::: 1774749448816322 - 1774749448819318 ::: 2996 microseconds 
+ -> [23]Hello_World -> [34]Message ::: 1775004546114954 - 1775004546115333 ::: 379 microseconds 
+ -> [23]Hello_World -> [34]Message ::: 1775004546115754 - 1775004546116674 ::: 919 microseconds 
+ -> [23]Hello_World -> [34]Message ::: 1775004546116693 - 1775004546117530 ::: 836 microseconds 
+ -> [23]Hello_World -> [34]Message ::: 1775004546117548 - 1775004546119066 ::: 1517 microseconds 
+ -> [23]Hello_World -> [34]Message ::: 1775004546119084 - 1775004546119958 ::: 874 microseconds 
+ -> [23]Hello_World ::: 1775004546114911 - 1775004546119973 ::: 5062 microseconds 
 ```
 
 ### Injector script
