@@ -312,16 +312,16 @@ function mergeSorted(a, b) {
   return out;
 }
 
-// Merge consecutive same-function spans into one block when at least one is non-leaf.
-// Two leaf spans of the same function are kept separate (distinct measured calls).
-// A leaf + non-leaf (or non-leaf + non-leaf) pair merges into a non-leaf block.
+// Merge overlapping same-function spans into one block (at least one must be non-leaf).
+// Spans that merely follow each other without overlap are kept separate —
+// they represent distinct invocations of the function.
 function coalesceParents(arr) {
   if (!arr || arr.length <= 1) return arr;
   const out = [];
   let cur = { ...arr[0] };
   for (let i = 1; i < arr.length; i++) {
     const sp = arr[i];
-    if (sp.func === cur.func && (!cur.leaf || !sp.leaf)) {
+    if (sp.func === cur.func && (!cur.leaf || !sp.leaf) && sp.start < cur.end) {
       if (sp.start < cur.start) cur.start = sp.start;
       if (sp.end   > cur.end)   cur.end   = sp.end;
       cur.leaf = false;   // merged block: use end-start in tooltip

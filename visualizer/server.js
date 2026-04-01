@@ -26,13 +26,17 @@ const history = [];   // all packets (capped at MAX_HISTORY)
 
 // ── Packet parser ─────────────────────────────────────────────────────────────
 function parsePacket(buf) {
-  if (buf.length < STRUCT_SIZE) return null;
+  if (buf.length < 40) return null;   // need at least the fixed header
   try {
     const thread_id  = buf.readBigUInt64LE(0).toString();
     const startBig   = buf.readBigUInt64LE(8);
     const endBig     = buf.readBigUInt64LE(16);
     const elapsedBig = buf.readBigUInt64LE(24);
     const stackSize  = Number(buf.readBigUInt64LE(32));
+
+    // Packet size is guaranteed to be 40 + call_stack_size, so reject if
+    // the buffer is too short to hold the declared call stack.
+    if (stackSize > 1024 || buf.length < 40 + stackSize) return null;
 
     // Raw timestamps fit safely in JS Number (float64 mantissa = 53 bits,
     // Unix µs ≈ 1.77×10¹⁵ < 2⁵³ ≈ 9×10¹⁵). No server-side normalisation
@@ -41,7 +45,7 @@ function parsePacket(buf) {
     const end     = Number(endBig);
     const elapsed = Number(elapsedBig);
 
-    const len        = Math.min(stackSize || 1024, 1024);
+    const len        = stackSize;
     const stackSlice = buf.subarray(40, 40 + len);
     const nullAt     = stackSlice.indexOf(0);
     const call_stack = stackSlice

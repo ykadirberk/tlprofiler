@@ -54,7 +54,7 @@ profiler_payload_t;
 class __my_profiler_class
 {
 	public:
-		__my_profiler_class(const std::string location);
+		__my_profiler_class(const std::string_view location, const int line);
 		~__my_profiler_class();
 
 #if defined(TLPROFILER_UDP_DIRECT)
@@ -89,11 +89,12 @@ class __my_profiler_class
 #define _MYPROFILE_1(x, y)	x##y
 #define _MYPROFILE_2(x, y)	_MYPROFILE_1(x, y)
 #define _MYPROFILE_3(x)		_MYPROFILE_2(x, __COUNTER__)
-#define PROFILE				__my_profiler_class _MYPROFILE_3(var_profiler)(__func__);
+#define PROFILE_NAME(cn)	__my_profiler_class _MYPROFILE_3(var_profiler)(cn, __LINE__);
+#define PROFILE				PROFILE_NAME(__func__);
 
 #ifdef TLPROFILER_IMPLEMENTATION
 
-__my_profiler_class::__my_profiler_class(const std::string location)
+__my_profiler_class::__my_profiler_class(const std::string_view location, const int line)
 {
 
 #if defined(TLPROFILER_FILE_BUFFERED)
@@ -112,7 +113,9 @@ __my_profiler_class::__my_profiler_class(const std::string location)
 	}
 #endif // defined(TLPROFILER_FILE_DIRECT)
 
-	call_stack += " -> ";
+	call_stack += " -> [";
+	call_stack += std::to_string(line);
+	call_stack += "]";
 	call_stack += location;
 
 	start_time = std::chrono::system_clock::now();
@@ -159,7 +162,7 @@ __my_profiler_class::~__my_profiler_class()
 	
 	memcpy(payload.call_stack, call_stack.data(), payload.call_stack_size);
 
-	sendto((SOCKET)sock, reinterpret_cast<const char*>(&payload), sizeof(payload),
+	sendto((SOCKET)sock, reinterpret_cast<const char*>(&payload), sizeof(payload) - (1024 - payload.call_stack_size),
 	   0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 #endif
 
