@@ -30,10 +30,6 @@
 #include <chrono>
 
 #if defined(TLPROFILER_UDP_DIRECT)
-
-#include <winsock2.h>
-#pragma comment(lib, "ws2_32.lib")
-
 typedef struct _profiler_payload_t
 {
 	uint64_t thread_id;
@@ -74,8 +70,8 @@ class __my_profiler_class
 #endif
 
 #if defined(TLPROFILER_UDP_DIRECT)
-		static inline void* sock = nullptr;
-		static inline sockaddr_in dest;
+		static inline void* sock = nullptr; //SOCKET
+		static inline void* dest = nullptr; //sockaddr_in
 #endif
 
 		std::chrono::time_point<std::chrono::system_clock> start_time;
@@ -93,6 +89,13 @@ class __my_profiler_class
 #define PROFILE				PROFILE_NAME(__func__);
 
 #ifdef TLPROFILER_IMPLEMENTATION
+
+#if defined(TLPROFILER_UDP_DIRECT)
+
+#include <winsock2.h>
+#pragma comment(lib, "ws2_32.lib")
+
+#endif
 
 __my_profiler_class::__my_profiler_class(const std::string_view location, const int line)
 {
@@ -163,7 +166,7 @@ __my_profiler_class::~__my_profiler_class()
 	memcpy(payload.call_stack, call_stack.data(), payload.call_stack_size);
 
 	sendto((SOCKET)sock, reinterpret_cast<const char*>(&payload), sizeof(payload) - (1024 - payload.call_stack_size),
-	   0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
+	   0, reinterpret_cast<sockaddr*>(dest), sizeof(sockaddr));
 #endif
 
 	call_stack = remove_last_call(call_stack);
@@ -216,9 +219,10 @@ void __my_profiler_class::profiler_udp_init()
 		WSADATA wsa;
 		WSAStartup(MAKEWORD(2, 2), &wsa);
 		sock = (void*)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-		dest.sin_family = AF_INET;
-		dest.sin_port = htons(5152);
-		dest.sin_addr.s_addr = inet_addr("127.0.0.1");
+		dest = new sockaddr_in;
+		((sockaddr_in*)dest)->sin_family = AF_INET;
+		((sockaddr_in*)dest)->sin_port = htons(5152);
+		((sockaddr_in*)dest)->sin_addr.s_addr = inet_addr("127.0.0.1");
 
 		u_long mode = 1; // 0 for blocking, non-zero for non-blocking
 		ioctlsocket((SOCKET)sock, FIONBIO, &mode);

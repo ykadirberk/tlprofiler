@@ -1,5 +1,5 @@
 # tlprofiler
-Thread Local profiler with output to file for C++. Example code is in tlprofiler.cpp.
+Thread Local profiler with output to file or UDP livestreaming for C++. Example code is in tlprofiler.cpp.
 
 ## Setup
 
@@ -35,7 +35,7 @@ Output format must be explicitly defined by defining these macros:
 // ----------------
 ```
 
-After that, using PROFILE macro will allow any scope to be profiled starting from the line it is written. (yet no information about scope will be emitted, only the function name.)
+After that, using PROFILE macro will allow any scope to be profiled starting from the line it is written. (yet no information about scope will be emitted, only the function name and line it started running.)
 
 ```
 void Hello_World()
@@ -114,3 +114,4 @@ Simply run below code on shell, go to http://localhost:3000/ and then run your p
 cd visualizer
 npm start
 ```
+![Visualizer Example](visualizer.png)
